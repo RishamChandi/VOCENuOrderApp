@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VOCENuOrderApp.Data;
+using VOCENuOrderApp.Services;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -11,15 +12,23 @@ namespace VOCENuOrderApp.Controllers
     public class ReplenishmentSyncLogController : Controller
     {
         private readonly ApplicationDbContext _context;
-        private const int PageSize = 30;
+        private readonly VOCE_NuOrderReplenishmentSync _replenSync;
+        private const int PageSize = 50;
         private const int MaxDaysRange = 31;
 
-        public ReplenishmentSyncLogController(ApplicationDbContext context) => _context = context;
+        public ReplenishmentSyncLogController(ApplicationDbContext context, VOCE_NuOrderReplenishmentSync replenSync)
+        {
+            _context = context;
+            _replenSync = replenSync;
+        }
 
-        public async Task<IActionResult> Index(string statusFilter, string fromDate, string toDate, string styleFilter, string colorFilter, int page = 1)
+        public async Task<IActionResult> Index(
+            string statusFilter, string invTypeFilter, string sizeFilter, string skuFilter,
+            string fromDate, string toDate, string styleFilter, string colorFilter,
+            int page = 1)
         {
             _context.Database.SetCommandTimeout(120);
-            var logs = _context.ReplenishmentSyncLogs.AsNoTracking();
+            var logs = _context.ReplenishmentSyncLogs.AsNoTracking().AsQueryable();
 
             DateTime? fromDt = null; DateTime? toDtVal = null;
             if (DateTime.TryParse(fromDate, out var f)) fromDt = f.Date;
@@ -32,20 +41,19 @@ namespace VOCENuOrderApp.Controllers
                 toDtVal = today.AddDays(1).AddTicks(-1);
             }
             if (fromDt.HasValue && toDtVal.HasValue && (toDtVal.Value - fromDt.Value).TotalDays > MaxDaysRange)
-            {
                 toDtVal = fromDt.Value.AddDays(MaxDaysRange);
-            }
 
             if (!string.IsNullOrEmpty(statusFilter)) logs = logs.Where(l => l.Status == statusFilter);
+            if (!string.IsNullOrEmpty(invTypeFilter)) logs = logs.Where(l => l.InventoryType == invTypeFilter);
+            if (!string.IsNullOrEmpty(sizeFilter)) logs = logs.Where(l => l.Size == sizeFilter);
+            if (!string.IsNullOrEmpty(skuFilter)) logs = logs.Where(l => l.SkuId != null && l.SkuId.StartsWith(skuFilter));
             if (fromDt.HasValue) logs = logs.Where(l => l.Timestamp >= fromDt.Value);
             if (toDtVal.HasValue) logs = logs.Where(l => l.Timestamp <= toDtVal.Value);
             if (!string.IsNullOrEmpty(styleFilter)) logs = logs.Where(l => l.BasePartNumber != null && l.BasePartNumber.StartsWith(styleFilter));
             if (!string.IsNullOrEmpty(colorFilter)) logs = logs.Where(l => l.Color != null && l.Color.StartsWith(colorFilter));
 
-            // Count with narrow projection
-            var totalLogs = await logs.Select(l => l.Id).CountAsync(HttpContext.RequestAborted);
+            var totalLogs = await logs.CountAsync(HttpContext.RequestAborted);
 
-            // Project to a lightweight shape (exclude RequestJson/ResponseJson)
             var logPage = await logs
                 .OrderByDescending(l => l.Timestamp)
                 .ThenByDescending(l => l.Id)
@@ -57,6 +65,8 @@ namespace VOCENuOrderApp.Controllers
                     Timestamp = l.Timestamp,
                     BasePartNumber = l.BasePartNumber,
                     Color = l.Color,
+                    Size = l.Size,
+                    InventoryType = l.InventoryType,
                     SkuId = l.SkuId,
                     ATS = l.ATS,
                     POQty = l.POQty,
@@ -69,7 +79,11 @@ namespace VOCENuOrderApp.Controllers
 
             ViewBag.CurrentPage = page;
             ViewBag.TotalPages = (int)Math.Ceiling((double)totalLogs / PageSize);
+            ViewBag.TotalCount = totalLogs;
             ViewBag.StatusFilter = statusFilter;
+            ViewBag.InvTypeFilter = invTypeFilter;
+            ViewBag.SizeFilter = sizeFilter;
+            ViewBag.SkuFilter = skuFilter;
             ViewBag.FromDate = fromDt?.ToString("yyyy-MM-dd");
             ViewBag.ToDate = toDtVal.HasValue ? toDtVal.Value.ToString("yyyy-MM-dd") : null;
             ViewBag.StyleFilter = styleFilter;
@@ -78,7 +92,6 @@ namespace VOCENuOrderApp.Controllers
             return View(logPage);
         }
 
-        // Retain lazy JSON fetch endpoint
         [HttpGet]
         public async Task<IActionResult> GetRequestJson(int id)
         {
@@ -90,7 +103,6 @@ namespace VOCENuOrderApp.Controllers
             return Content(log.RequestJson, "application/json");
         }
 
-        // NEW: lazy-load full ResponseJson for copy action
         [HttpGet]
         public async Task<IActionResult> GetResponseJson(int id)
         {
@@ -102,16 +114,21 @@ namespace VOCENuOrderApp.Controllers
             return Content(log.ResponseJson, "application/json");
         }
 
-        public async Task<IActionResult> ExportCsv(string statusFilter, string fromDate, string toDate, string styleFilter, string colorFilter)
+        public async Task<IActionResult> ExportCsv(
+            string statusFilter, string invTypeFilter, string sizeFilter, string skuFilter,
+            string fromDate, string toDate, string styleFilter, string colorFilter)
         {
             _context.Database.SetCommandTimeout(180);
-            var logs = _context.ReplenishmentSyncLogs.AsNoTracking();
+            var logs = _context.ReplenishmentSyncLogs.AsNoTracking().AsQueryable();
             DateTime? fromDt = null; DateTime? toDtVal = null;
             if (DateTime.TryParse(fromDate, out var f)) fromDt = f.Date;
             if (DateTime.TryParse(toDate, out var t)) toDtVal = t.Date.AddDays(1).AddTicks(-1);
             if (fromDt.HasValue && toDtVal.HasValue && (toDtVal.Value - fromDt.Value).TotalDays > MaxDaysRange)
                 toDtVal = fromDt.Value.AddDays(MaxDaysRange);
             if (!string.IsNullOrEmpty(statusFilter)) logs = logs.Where(l => l.Status == statusFilter);
+            if (!string.IsNullOrEmpty(invTypeFilter)) logs = logs.Where(l => l.InventoryType == invTypeFilter);
+            if (!string.IsNullOrEmpty(sizeFilter)) logs = logs.Where(l => l.Size == sizeFilter);
+            if (!string.IsNullOrEmpty(skuFilter)) logs = logs.Where(l => l.SkuId != null && l.SkuId.StartsWith(skuFilter));
             if (fromDt.HasValue) logs = logs.Where(l => l.Timestamp >= fromDt.Value);
             if (toDtVal.HasValue) logs = logs.Where(l => l.Timestamp <= toDtVal.Value);
             if (!string.IsNullOrEmpty(styleFilter)) logs = logs.Where(l => l.BasePartNumber != null && l.BasePartNumber.StartsWith(styleFilter));
@@ -123,23 +140,41 @@ namespace VOCENuOrderApp.Controllers
                 .ToListAsync(HttpContext.RequestAborted);
 
             var sb = new StringBuilder();
-            sb.AppendLine("Timestamp,BasePart,Color,SkuId,ATS,POQty,Prebook,Status,Message,RequestJson,ResponseJson");
+            sb.AppendLine("Timestamp,BasePart,Color,Size,InventoryType,SkuId,ATS,POQty,Prebook,Status,Message,Client");
             foreach (var l in list)
             {
-                sb.AppendLine($"\"{l.Timestamp:yyyy-MM-dd HH:mm:ss}\",\"{l.BasePartNumber}\",\"{l.Color}\",\"{l.SkuId}\",{l.ATS?.ToString() ?? ""},{l.POQty?.ToString() ?? ""},{l.Prebook},{l.Status},\"{(l.Message ?? "").Replace("\"","'")}\",\"{(Truncate(l.RequestJson,500)).Replace("\"","'")}\",\"{(Truncate(l.ResponseJson,500)).Replace("\"","'")}\"");
+                sb.AppendLine($"\"{l.Timestamp:yyyy-MM-dd HH:mm:ss}\",\"{l.BasePartNumber}\",\"{l.Color}\",\"{l.Size}\",\"{l.InventoryType}\",\"{l.SkuId}\",{l.ATS?.ToString() ?? ""},{l.POQty?.ToString() ?? ""},{l.Prebook},{l.Status},\"{(l.Message ?? "").Replace("\"", "'")}\",\"{l.Client}\"");
             }
             return File(Encoding.UTF8.GetBytes(sb.ToString()), "text/csv", "ReplenishmentSyncLogs.csv");
         }
 
-        private static string Truncate(string? s, int max) => string.IsNullOrWhiteSpace(s) ? string.Empty : (s.Length <= max ? s : s.Substring(0, max));
+        [HttpPost]
+        public async Task<IActionResult> TriggerSync(string basePart)
+        {
+            if (string.IsNullOrWhiteSpace(basePart))
+                return BadRequest("basePart is required");
 
-        // Thin row type for list view
+            try
+            {
+                await _replenSync.SyncReplenishmentForBasePart(basePart.Trim(), new[] { "Main Warehouse" });
+                TempData["SyncMessage"] = $"Sync completed for {basePart}. Check logs below.";
+            }
+            catch (Exception ex)
+            {
+                TempData["SyncMessage"] = $"Sync failed for {basePart}: {ex.Message}";
+            }
+
+            return RedirectToAction("Index", new { styleFilter = basePart.Trim() });
+        }
+
         public class ReplenLogRow
         {
             public int Id { get; set; }
             public DateTime Timestamp { get; set; }
             public string BasePartNumber { get; set; }
             public string Color { get; set; }
+            public string? Size { get; set; }
+            public string? InventoryType { get; set; }
             public string SkuId { get; set; }
             public float? ATS { get; set; }
             public float? POQty { get; set; }

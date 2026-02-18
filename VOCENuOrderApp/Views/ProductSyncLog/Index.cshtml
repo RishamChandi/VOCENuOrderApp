@@ -84,10 +84,10 @@
                         <td>@log.Brand</td>
                         <td>@log.Message</td>
                         <td>
-                            <button type="button" class="btn btn-sm btn-outline-primary" title="Copy request JSON" onclick="copyJsonAjax(@log.Id, true)">Copy</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" title="Copy request JSON" onclick="copyJsonAjax(@log.Id, true, this)">Copy</button>
                         </td>
                         <td>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" title="Copy response JSON" onclick="copyJsonAjax(@log.Id, false)">Copy</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" title="Copy response JSON" onclick="copyJsonAjax(@log.Id, false, this)">Copy</button>
                         </td>
                     </tr>
                 }
@@ -121,24 +121,66 @@
 
 @section Scripts {
 <script>
-    async function copyJsonAjax(id, isRequest) {
+    function fallbackCopy(text) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '-9999px';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (_) {}
+        document.body.removeChild(ta);
+        return ok;
+    }
+
+    async function copyJsonAjax(id, isRequest, btn) {
+        var orig = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
         try {
-            const baseUrlReq = '@Url.Action("GetRequestJson", "ProductSyncLog")';
-            const baseUrlResp = '@Url.Action("GetResponseJson", "ProductSyncLog")';
-            const url = (isRequest ? baseUrlReq : baseUrlResp) + `?id=${id}`;
-            const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-            if (!res.ok) return;
-            const text = await res.text();
-            if (!text) return;
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                await navigator.clipboard.writeText(text);
-            } else {
-                var ta = document.createElement('textarea');
-                ta.style.position = 'fixed'; ta.style.opacity = '0'; ta.value = text;
-                document.body.appendChild(ta); ta.focus(); ta.select();
-                try { document.execCommand('copy'); } finally { document.body.removeChild(ta); }
+            var baseUrlReq = '@Url.Action("GetRequestJson", "ProductSyncLog")';
+            var baseUrlResp = '@Url.Action("GetResponseJson", "ProductSyncLog")';
+            var url = (isRequest ? baseUrlReq : baseUrlResp) + '?id=' + id;
+            var res = await fetch(url, { credentials: 'same-origin', redirect: 'follow' });
+            var contentType = res.headers.get('content-type') || '';
+            if (contentType.indexOf('text/html') !== -1) {
+                btn.innerHTML = 'Auth err';
+                setTimeout(function() { btn.innerHTML = orig; btn.disabled = false; }, 2000);
+                return;
             }
-        } catch (e) { /* ignore */ }
+            if (res.status === 204 || res.status === 404) {
+                btn.innerHTML = 'Empty';
+                setTimeout(function() { btn.innerHTML = orig; btn.disabled = false; }, 1500);
+                return;
+            }
+            if (!res.ok) {
+                btn.innerHTML = 'Error ' + res.status;
+                setTimeout(function() { btn.innerHTML = orig; btn.disabled = false; }, 2000);
+                return;
+            }
+            var text = await res.text();
+            if (!text || !text.trim()) {
+                btn.innerHTML = 'Empty';
+                setTimeout(function() { btn.innerHTML = orig; btn.disabled = false; }, 1500);
+                return;
+            }
+            var copied = false;
+            try {
+                if (navigator.clipboard) {
+                    await navigator.clipboard.writeText(text);
+                    copied = true;
+                }
+            } catch (_) {}
+            if (!copied) { copied = fallbackCopy(text); }
+            btn.innerHTML = copied ? '<i class="bi bi-check-lg"></i> Copied' : 'Failed';
+            setTimeout(function() { btn.innerHTML = orig; btn.disabled = false; }, 1500);
+        } catch (e) {
+            btn.innerHTML = 'Error';
+            setTimeout(function() { btn.innerHTML = orig; btn.disabled = false; }, 2000);
+        }
     }
 </script>
 }

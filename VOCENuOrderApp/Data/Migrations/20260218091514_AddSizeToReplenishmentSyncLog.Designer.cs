@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using VOCENuOrderApp.Data;
@@ -11,9 +12,11 @@ using VOCENuOrderApp.Data;
 namespace VOCENuOrderApp.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260218091514_AddSizeToReplenishmentSyncLog")]
+    partial class AddSizeToReplenishmentSyncLog
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -222,21 +225,6 @@ namespace VOCENuOrderApp.Data.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
-            modelBuilder.Entity("VOCENuOrderApp.Models.AppSetting", b =>
-                {
-                    b.Property<string>("Key")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<string>("Value")
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)");
-
-                    b.HasKey("Key");
-
-                    b.ToTable("AppSettings");
-                });
-
             modelBuilder.Entity("VOCENuOrderApp.Models.CustomerSyncLog", b =>
                 {
                     b.Property<int>("Id")
@@ -374,9 +362,6 @@ namespace VOCENuOrderApp.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("InventoryType")
-                        .HasColumnType("text");
-
                     b.Property<string>("Message")
                         .IsRequired()
                         .HasColumnType("text");
@@ -415,12 +400,6 @@ namespace VOCENuOrderApp.Data.Migrations
                     b.HasIndex("Color")
                         .HasDatabaseName("IX_ReplenishmentSyncLogs_Color");
 
-                    b.HasIndex("InventoryType")
-                        .HasDatabaseName("IX_ReplenishmentSyncLogs_InventoryType");
-
-                    b.HasIndex("Size")
-                        .HasDatabaseName("IX_ReplenishmentSyncLogs_Size");
-
                     b.HasIndex("Timestamp")
                         .HasDatabaseName("IX_ReplenishmentSyncLogs_Timestamp");
 
@@ -429,9 +408,6 @@ namespace VOCENuOrderApp.Data.Migrations
 
                     b.HasIndex("Color", "Timestamp")
                         .HasDatabaseName("IX_ReplenishmentSyncLogs_Color_Timestamp");
-
-                    b.HasIndex("InventoryType", "Timestamp")
-                        .HasDatabaseName("IX_ReplenishmentSyncLogs_InvType_Timestamp");
 
                     b.HasIndex("Status", "Timestamp")
                         .HasDatabaseName("IX_ReplenishmentSyncLogs_Status_Timestamp");

@@ -20,7 +20,9 @@ namespace VOCENuOrderApp.Data
 
         public DbSet<OrderStatusSyncLog> OrderStatusSyncLogs { get; set; } // Added sales order status sync logs
 
-        public DbSet<CustomerSyncLog> CustomerSyncLogs { get; set; } // Added customer sync logs
+        public DbSet<CustomerSyncLog> CustomerSyncLogs { get; set; }
+
+        public DbSet<AppSetting> AppSettings { get; set; }
 
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
             : base(options)
@@ -55,10 +57,12 @@ namespace VOCENuOrderApp.Data
                 entity.HasIndex(e => new { e.Status, e.Timestamp }).HasDatabaseName("IX_ReplenishmentSyncLogs_Status_Timestamp");
                 entity.HasIndex(e => e.BasePartNumber).HasDatabaseName("IX_ReplenishmentSyncLogs_BasePartNumber");
                 entity.HasIndex(e => e.Color).HasDatabaseName("IX_ReplenishmentSyncLogs_Color");
+                entity.HasIndex(e => e.InventoryType).HasDatabaseName("IX_ReplenishmentSyncLogs_InventoryType");
+                entity.HasIndex(e => e.Size).HasDatabaseName("IX_ReplenishmentSyncLogs_Size");
 
-                // Composite indexes to accelerate prefix searches combined with date ranges and ordering
                 entity.HasIndex(e => new { e.BasePartNumber, e.Timestamp }).HasDatabaseName("IX_ReplenishmentSyncLogs_BasePart_Timestamp");
                 entity.HasIndex(e => new { e.Color, e.Timestamp }).HasDatabaseName("IX_ReplenishmentSyncLogs_Color_Timestamp");
+                entity.HasIndex(e => new { e.InventoryType, e.Timestamp }).HasDatabaseName("IX_ReplenishmentSyncLogs_InvType_Timestamp");
             });
         }
     }

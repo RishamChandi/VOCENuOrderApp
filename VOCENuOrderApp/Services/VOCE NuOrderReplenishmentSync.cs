@@ -1,4 +1,4 @@
-﻿using Hangfire;
+using Hangfire;
 using VOCENuOrderApp.Data;
 using VOCENuOrderApp.Models.NUORDER;
 using VOCENuOrderApp.Models.XORO;
@@ -113,23 +113,46 @@ namespace VOCENuOrderApp.Services
             }
 
             // 4) Group by color code; only variants that have NuORDER size id (H3)
-            var colorGroups = xoroProduct.Variants
+            var allVariants = xoroProduct.Variants;
+            var skippedVariants = allVariants
+                .Where(v => string.IsNullOrWhiteSpace(v.Option1ValueCode) || string.IsNullOrWhiteSpace(v.CustomFieldH3))
+                .ToList();
+
+            if (skippedVariants.Any())
+            {
+                foreach (var sv in skippedVariants)
+                {
+                    var msg = $"Variant filtered out: ItemNumber='{sv.ItemNumber}', Option1ValueCode='{sv.Option1ValueCode}', " +
+                              $"Option2Value='{sv.Option2Value}', Option3Value='{sv.Option3Value}', " +
+                              $"H3(NuOrderSkuId)='{sv.CustomFieldH3}', H10(ImmediateFlag)='{sv.CustomFieldH10}', H12(ProductId)='{sv.CustomFieldH12}'";
+                    _logger.LogWarning("⚠️ {BasePart} - {Msg}", basePartNumber, msg);
+                    await LogReplenishmentSync(basePartNumber, sv.Option1ValueCode ?? "N/A", sv.CustomFieldH3 ?? "N/A",
+                        null, null, false, "Skipped", msg, null, null, "VOCE", sv.Option2Value, "Diagnostic");
+                }
+                _logger.LogWarning("⚠️ {BasePart}: {Count}/{Total} variants skipped (missing Option1ValueCode or H3).",
+                    basePartNumber, skippedVariants.Count, allVariants.Count);
+            }
+
+            var colorGroups = allVariants
                 .Where(v => !string.IsNullOrWhiteSpace(v.Option1ValueCode) &&
-                            !string.IsNullOrWhiteSpace(v.CustomFieldH3))     // H3 = NuORDER SKU/size _id
+                            !string.IsNullOrWhiteSpace(v.CustomFieldH3))
                 .GroupBy(v => v.Option1ValueCode);
 
             foreach (var colorGroup in colorGroups)
             {
                 var colorCode = colorGroup.Key;
-                _logger.LogInformation("Processing color group {ColorCode} for {BasePart}.", colorCode, basePartNumber);
+                var variantsInGroup = colorGroup.ToList();
+                bool hasImmediateFlag = variantsInGroup.Any(v => v.CustomFieldH10 == "Y");
+
+                _logger.LogInformation(
+                    "Processing color {ColorCode} for {BasePart}: {Count} variants, ImmediateFlag={Flag} (H10 values: [{H10s}]).",
+                    colorCode, basePartNumber, variantsInGroup.Count, hasImmediateFlag,
+                    string.Join(", ", variantsInGroup.Select(v => v.ItemNumber + "=" + (v.CustomFieldH10 ?? "null"))));
 
                 var replenishmentList = new List<NuOrderReplenishment>();
-                var productIdsForColorGroup = new HashSet<string>(); // NuORDER product (style) _id(s) to refresh
+                var productIdsForColorGroup = new HashSet<string>();
 
-                // business flags (if any variant says Immediate, we’ll send immediate rows)
-                bool hasImmediateFlag = colorGroup.Any(v => v.CustomFieldH10 == "Y");
-
-                foreach (var variant in colorGroup)
+                foreach (var variant in variantsInGroup)
                 {
                     string itemNumber = variant.ItemNumber;
                     string nuOrderSizeId = variant.CustomFieldH3;   // size(SKU) _id
@@ -138,17 +161,17 @@ namespace VOCENuOrderApp.Services
                     if (!string.IsNullOrWhiteSpace(nuOrderProductId))
                         productIdsForColorGroup.Add(nuOrderProductId);
 
+                    string sizeValue = variant.Option2Value;
+
                     if (string.IsNullOrWhiteSpace(itemNumber) || string.IsNullOrWhiteSpace(nuOrderSizeId))
                     {
                         var msg = $"Skipping variant with missing ItemNumber/H3. ItemNumber='{itemNumber}', H3='{nuOrderSizeId}'";
                         _logger.LogWarning(msg);
-                        await LogReplenishmentSync(basePartNumber, colorCode, nuOrderSizeId, null, null, false, "Failed", msg, null, null, "VOCE");
+                        await LogReplenishmentSync(basePartNumber, colorCode, nuOrderSizeId, null, null, false, "Failed", msg, null, null, "VOCE", sizeValue, "Immediate");
                         continue;
                     }
 
                     var inv = aggregatedInventory.FirstOrDefault(i => i.ItemNumber == itemNumber);
-                    //float? atsQty = inv != null && inv.TotalATSQty > 0 ? inv.TotalATSQty : (float?)null;
-                    //float? atsQty = inv != null && inv.TotalATSQty > 0 ? inv.TotalATSQty : 0f;
                     float? atsQty = inv?.TotalATSQty;
 
                     // ---- Immediate (from ATS) ----
@@ -167,14 +190,14 @@ namespace VOCENuOrderApp.Services
                         });
 
                         await LogReplenishmentSync(basePartNumber, colorCode, nuOrderSizeId, atsQty, null, false,
-                            "Success", "Immediate replenishment staged", null, null, "VOCE");
+                            "Success", "Immediate replenishment staged", null, null, "VOCE", sizeValue, "Immediate");
                     }
                     else
                     {
                         _logger.LogInformation("Skipping immediate for SKU {SkuId} (CustomFieldH10 != 'Y').", nuOrderSizeId);
                     }
 
-                    // ---- Prebook (unchanged) ----
+                    // ---- Prebook ----
                     if (variant.IsPreSellFlag)
                     {
                         replenishmentList.Add(new NuOrderReplenishment
@@ -192,13 +215,13 @@ namespace VOCENuOrderApp.Services
                             DateTime.TryParse(variant.CustomFieldH14, out var preEnd))
                         {
                             await LogReplenishmentSync(basePartNumber, colorCode, nuOrderSizeId, null, null, true,
-                                "Success", "Prebook replenishment staged", null, null, "VOCE");
+                                "Success", "Prebook replenishment staged", null, null, "VOCE", sizeValue, "Prebook");
                         }
                         else
                         {
                             var msg = $"Invalid prebook period for {itemNumber}: start='{variant.CustomFieldH13}', end='{variant.CustomFieldH14}'";
                             _logger.LogWarning(msg);
-                            await LogReplenishmentSync(basePartNumber, colorCode, nuOrderSizeId, null, null, true, "Failed", msg, null, null, "VOCE");
+                            await LogReplenishmentSync(basePartNumber, colorCode, nuOrderSizeId, null, null, true, "Failed", msg, null, null, "VOCE", sizeValue, "Prebook");
                         }
                     }
                 } // variants in color
@@ -206,7 +229,7 @@ namespace VOCENuOrderApp.Services
                 // ---- Future: full size range per ETA ----
                 var futurePoLinesForColor = incomingPOs
                     .Where(po => po.AvailablePOLineQty.HasValue && po.AvailablePOLineQty.Value > 0)
-                    .Where(po => colorGroup.Any(v => v.ItemNumber == po.ItemNumber))
+                    .Where(po => variantsInGroup.Any(v => v.ItemNumber == po.ItemNumber))
                     .ToList();
 
                 var futureDates = futurePoLinesForColor
@@ -219,7 +242,7 @@ namespace VOCENuOrderApp.Services
 
                 foreach (var eta in futureDates)
                 {
-                    foreach (var variant in colorGroup)
+                    foreach (var variant in variantsInGroup)
                     {
                         var itemNumber = variant.ItemNumber;
                         var nuOrderSizeId = variant.CustomFieldH3;
@@ -248,7 +271,7 @@ namespace VOCENuOrderApp.Services
                         await LogReplenishmentSync(
                             basePartNumber, colorCode, nuOrderSizeId,
                             null, qty, false, "Success",
-                            $"Future staged for ETA {eta:MM/dd/yyyy} (full size range)", null, null, "VOCE");
+                            $"Future staged for ETA {eta:MM/dd/yyyy} (full size range)", null, null, "VOCE", variant.Option2Value, "Future");
                     }
                 }
 
@@ -331,7 +354,9 @@ namespace VOCENuOrderApp.Services
                         result ? "Bulk replenishments submitted" : "Bulk replenishments failed",
                         requestJson,
                         responseBody,
-                        "VOCE");
+                        "VOCE",
+                        null,
+                        "Bulk");
 
                     // Refresh inventory flags for each product (style) represented in this color group
                     var updated = await _nuOrderApiService.UpdateInventoryFlagsAsync(productIdsForColorGroup.ToList());
@@ -420,13 +445,17 @@ namespace VOCENuOrderApp.Services
             string message,
             string? requestJson = null,
             string? responseJson = null,
-            string? client = null)
+            string? client = null,
+            string? size = null,
+            string? inventoryType = null)
         {
             var log = new ReplenishmentSyncLog
             {
                 Timestamp = DateTime.UtcNow,
                 BasePartNumber = basePart,
                 Color = color,
+                Size = size,
+                InventoryType = inventoryType,
                 SkuId = skuId,
                 ATS = ats,
                 POQty = poQty,

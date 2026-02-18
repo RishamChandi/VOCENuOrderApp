@@ -9,6 +9,8 @@ using VOCENuOrderApp.Data;
 using VOCENuOrderApp.Models.NUORDER;
 using VOCENuOrderApp.Services;
 
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Database — PostgreSQL
@@ -57,6 +59,7 @@ builder.Services.AddRazorPages(options =>
 builder.Services.AddHttpClient<XoroApiServiceVOCE>();
 builder.Services.AddHttpClient<NuOrderApiServiceVOCE>();
 builder.Services.AddTransient<VOCE_NuOrderReplenishmentSync>();
+builder.Services.AddTransient<LogCleanupService>();
 
 // VOCE NuOrder config (reads from env vars in production via Configuration)
 builder.Services.Configure<NuOrderVOCEConfig>(builder.Configuration.GetSection("NuOrderVOCEProduction"));
@@ -175,6 +178,12 @@ RecurringJob.AddOrUpdate<VOCE_NuOrderSalesOrder>(
     "VOCE NuOrder SalesOrder Sync",
     svc => svc.FetchApprovedOrdersAsync(),
     "*/30 * * * *"
+);
+
+RecurringJob.AddOrUpdate<LogCleanupService>(
+    "Log Cleanup",
+    svc => svc.CleanOldLogsAsync(),
+    "0 0 * * *"
 );
 
 app.Run();

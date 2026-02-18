@@ -1,7 +1,10 @@
 using Hangfire;
 using Hangfire.Storage;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using VOCENuOrderApp.Data;
+using VOCENuOrderApp.Models;
 using VOCENuOrderApp.Models.NUORDER;
 
 namespace VOCENuOrderApp.Controllers
@@ -10,14 +13,16 @@ namespace VOCENuOrderApp.Controllers
     {
         private readonly IConfiguration _config;
         private readonly NuOrderVOCEConfig _nuOrderConfig;
+        private readonly ApplicationDbContext _context;
 
-        public SettingsController(IConfiguration config, IOptions<NuOrderVOCEConfig> nuOrderConfig)
+        public SettingsController(IConfiguration config, IOptions<NuOrderVOCEConfig> nuOrderConfig, ApplicationDbContext context)
         {
             _config = config;
             _nuOrderConfig = nuOrderConfig.Value;
+            _context = context;
         }
 
-        public IActionResult Index()
+        public async Task<IActionResult> Index()
         {
             var connStr = _config.GetConnectionString("DefaultConnection") ?? "";
             var serverName = ExtractServer(connStr);
@@ -51,7 +56,53 @@ namespace VOCENuOrderApp.Controllers
 
             ViewBag.HangfireJobs = jobs;
 
+            var autoClean = await GetSetting("AutoCleanLogs");
+            ViewBag.AutoCleanLogs = string.Equals(autoClean, "true", StringComparison.OrdinalIgnoreCase);
+
+            var daysVal = await GetSetting("AutoCleanLogsDays");
+            ViewBag.AutoCleanLogsDays = int.TryParse(daysVal, out var days) ? days : 14;
+
             return View();
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> UpdateAutoClean(bool enabled, int days)
+        {
+            if (days < 1) days = 14;
+            if (days > 365) days = 365;
+
+            await UpsertSetting("AutoCleanLogs", enabled ? "true" : "false");
+            await UpsertSetting("AutoCleanLogsDays", days.ToString());
+
+            TempData["SettingsMessage"] = enabled
+                ? $"Auto-cleanup enabled. Logs older than {days} days will be removed daily."
+                : "Auto-cleanup disabled.";
+
+            return RedirectToAction("Index");
+        }
+
+        private async Task<string?> GetSetting(string key)
+        {
+            return await _context.AppSettings
+                .AsNoTracking()
+                .Where(s => s.Key == key)
+                .Select(s => s.Value)
+                .FirstOrDefaultAsync();
+        }
+
+        private async Task UpsertSetting(string key, string value)
+        {
+            var setting = await _context.AppSettings.FindAsync(key);
+            if (setting == null)
+            {
+                _context.AppSettings.Add(new AppSetting { Key = key, Value = value });
+            }
+            else
+            {
+                setting.Value = value;
+            }
+            await _context.SaveChangesAsync();
         }
 
         private static string Mask(string? value)
@@ -65,7 +116,8 @@ namespace VOCENuOrderApp.Controllers
             foreach (var part in connStr.Split(';'))
             {
                 var trimmed = part.Trim();
-                if (trimmed.StartsWith("Server=", StringComparison.OrdinalIgnoreCase) ||
+                if (trimmed.StartsWith("Host=", StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.StartsWith("Server=", StringComparison.OrdinalIgnoreCase) ||
                     trimmed.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase))
                 {
                     return trimmed.Split('=', 2)[1].Trim();
