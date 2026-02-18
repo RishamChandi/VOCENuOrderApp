@@ -1,0 +1,34 @@
+@page "/Voce/Replenishment"
+@model VOCENuOrderApp.Pages.Voce.ReplenishmentModel
+@{
+    ViewData["Title"] = "VOCE Replenishment Syncs";
+}
+
+<section class="mb-4">
+    <div class="d-flex flex-column flex-lg-row justify-content-lg-between gap-3 align-items-lg-center">
+        <div>
+            <h1 class="h3 mb-1">VOCE Replenishment Syncs</h1>
+            <p class="text-muted mb-0">Blueprint space for upcoming tooling around VOCE replenishment batches.</p>
+        </div>
+        @await Html.PartialAsync("Voce/_VoceNav")
+    </div>
+</section>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h2 class="h5">Pipeline overview</h2>
+                <p class="mb-0">Once wired, this tile will summarize the Hangfire jobs (CSV lists, inventory snapshots, NuORDER flag refreshes) so support can see at a glance when VOCE replenishment data last moved.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h2 class="h5">Exception drill-down</h2>
+                <p class="mb-0">Planned charts + tabular feeds for failures (bad SKU, zero ATS, PO mismatches) will render here, reusing the same filtering service as the logs page.</p>
+            </div>
+        </div>
+    </div>
+</div>

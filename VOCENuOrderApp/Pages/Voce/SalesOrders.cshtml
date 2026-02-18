@@ -1,0 +1,22 @@
+@page "/Voce/SalesOrders"
+@model VOCENuOrderApp.Pages.Voce.SalesOrdersModel
+@{
+    ViewData["Title"] = "VOCE Sales Orders";
+}
+
+<section class="mb-4">
+    <div class="d-flex flex-column flex-lg-row justify-content-lg-between gap-3 align-items-lg-center">
+        <div>
+            <h1 class="h3 mb-1">VOCE Sales Orders</h1>
+            <p class="text-muted mb-0">Placeholder home for tracking the VOCE NuORDER ? Xoro sales-order pipeline.</p>
+        </div>
+        @await Html.PartialAsync("Voce/_VoceNav")
+    </div>
+</section>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h2 class="h5">Status</h2>
+        <p class="mb-0">As soon as the underlying job surfaces enhanced telemetry, this page will show order queues, last status sync, and retry tooling limited to the VOCE client.</p>
+    </div>
+</div>
