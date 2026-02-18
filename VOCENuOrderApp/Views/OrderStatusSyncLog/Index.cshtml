@@ -1,0 +1,84 @@
+@model List<VOCENuOrderApp.Models.NUORDER.OrderStatusSyncLog>
+@{
+    ViewBag.Title = "Order Status Sync Logs";
+    var currentPage = (int)ViewBag.CurrentPage;
+    var totalPages = (int)ViewBag.TotalPages;
+}
+<h2>Order Status Sync Logs</h2>
+<form method="get" class="row g-2 mb-3">
+    <div class="col-md-2">
+        <label>Order Number<input name="orderNumber" value="@ViewBag.OrderNumber" class="form-control" /></label>
+    </div>
+    <div class="col-md-2">
+        <label>Target Status<input name="targetStatus" value="@ViewBag.TargetStatus" class="form-control" /></label>
+    </div>
+    <div class="col-md-2">
+        <label>Endpoint<input name="endpoint" value="@ViewBag.Endpoint" class="form-control" placeholder="path or body" /></label>
+    </div>
+    <div class="col-md-2">
+        <label>Success
+            <select name="success" class="form-select">
+                <option value="">All</option>
+                <option value="true" selected="@(ViewBag.Success == "true")">Success</option>
+                <option value="false" selected="@(ViewBag.Success == "false")">Failed</option>
+            </select>
+        </label>
+    </div>
+    <div class="col-md-2">
+        <label>From<input type="date" name="fromDate" value="@ViewBag.FromDate" class="form-control" /></label>
+    </div>
+    <div class="col-md-2">
+        <label>To<input type="date" name="toDate" value="@ViewBag.ToDate" class="form-control" /></label>
+    </div>
+    <div class="col-12 d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Filter</button>
+        <a class="btn btn-secondary" href="@Url.Action("ExportCsv", new { orderNumber = ViewBag.OrderNumber, endpoint = ViewBag.Endpoint, success = ViewBag.Success, targetStatus = ViewBag.TargetStatus, fromDate = ViewBag.FromDate, toDate = ViewBag.ToDate })">Export CSV</a>
+    </div>
+</form>
+<table class="table table-sm table-striped table-bordered">
+    <thead>
+        <tr>
+            <th>Time (UTC)</th>
+            <th>Order #</th>
+            <th>Internal Id</th>
+            <th>Prev Status</th>
+            <th>Target</th>
+            <th>Success</th>
+            <th>Endpoint</th>
+            <th>Client</th>
+            <th>Error</th>
+            <th>Request URL</th>
+            <th>Request JSON</th>
+            <th>Response Code</th>
+            <th>Response Body</th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var log in Model)
+    {
+        <tr class="@(log.Success ? "table-success" : "table-danger")">
+            <td>@log.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</td>
+            <td>@log.OrderNumber</td>
+            <td>@log.NuOrderInternalId</td>
+            <td>@log.PreviousStatus</td>
+            <td>@log.TargetStatus</td>
+            <td>@log.Success</td>
+            <td>@log.EndpointUsed</td>
+            <td>@log.Client</td>
+            <td>@(string.IsNullOrWhiteSpace(log.ErrorMessage) ? "" : log.ErrorMessage)</td>
+            <td class="text-break">@log.RequestUrl</td>
+            <td class="text-break">@log.RequestJson</td>
+            <td>@log.ResponseStatusCode</td>
+            <td class="text-break">@log.ResponseBody</td>
+        </tr>
+    }
+    </tbody>
+</table>
+<nav>
+    <ul class="pagination">
+        @for (var i = 1; i <= totalPages; i++)
+        {
+            <li class="page-item @(i==currentPage?"active":"")"><a class="page-link" href="@Url.Action("Index", new { orderNumber=ViewBag.OrderNumber, endpoint=ViewBag.Endpoint, success=ViewBag.Success, targetStatus=ViewBag.TargetStatus, fromDate=ViewBag.FromDate, toDate=ViewBag.ToDate, page=i })">@i</a></li>
+        }
+    </ul>
+</nav>

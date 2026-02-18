@@ -1,0 +1,15 @@
+@{
+    var path = Context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty;
+    string ActiveClass(string target)
+    {
+        return path.StartsWith(target, StringComparison.OrdinalIgnoreCase)
+            ? "btn btn-primary active"
+            : "btn btn-outline-secondary";
+    }
+}
+<div class="btn-group voce-nav" role="group" aria-label="VOCE navigation">
+    <a asp-page="/Voce/Products" class="@ActiveClass("/voce/products")">Product Syncs</a>
+    <a asp-page="/Voce/Replenishment" class="@ActiveClass("/voce/replenishment")">Replenishment Syncs</a>
+    <a asp-page="/Voce/SalesOrders" class="@ActiveClass("/voce/salesorders")">Sales Orders</a>
+    <a asp-page="/Voce/Main" class="@ActiveClass("/voce/main")">Logs</a>
+</div>
