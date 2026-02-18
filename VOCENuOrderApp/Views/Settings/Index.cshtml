@@ -1,0 +1,112 @@
+@using VOCENuOrderApp.Controllers
+@{
+    ViewData["Title"] = "Settings";
+    var jobs = ViewBag.HangfireJobs as List<HangfireJobInfo> ?? new List<HangfireJobInfo>();
+}
+
+<h1 class="page-heading">Settings</h1>
+<p class="page-subheading">Connection details and recurring job configuration (read-only).</p>
+
+<div class="row g-4">
+    <!-- NuOrder Connection -->
+    <div class="col-lg-6">
+        <div class="settings-card card">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i class="bi bi-cloud text-primary"></i> NuOrder Connection
+            </div>
+            <div class="card-body">
+                <div class="setting-row">
+                    <span class="setting-label">Base URL</span>
+                    <span class="setting-value">@ViewBag.NuOrderBaseUrl</span>
+                </div>
+                <div class="setting-row">
+                    <span class="setting-label">Consumer Key</span>
+                    <span class="setting-value">@ViewBag.NuOrderConsumerKey</span>
+                </div>
+                <div class="setting-row">
+                    <span class="setting-label">Token</span>
+                    <span class="setting-value">@ViewBag.NuOrderToken</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Xoro Connection -->
+    <div class="col-lg-6">
+        <div class="settings-card card">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i class="bi bi-hdd-network text-success"></i> Xoro Connection
+            </div>
+            <div class="card-body">
+                <div class="setting-row">
+                    <span class="setting-label">Base URL</span>
+                    <span class="setting-value">@ViewBag.XoroBaseUrl</span>
+                </div>
+                <div class="setting-row">
+                    <span class="setting-label">Client ID</span>
+                    <span class="setting-value">@ViewBag.XoroClientId</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Database -->
+    <div class="col-lg-6">
+        <div class="settings-card card">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i class="bi bi-database text-warning"></i> Database
+            </div>
+            <div class="card-body">
+                <div class="setting-row">
+                    <span class="setting-label">Server</span>
+                    <span class="setting-value">@ViewBag.DbServer</span>
+                </div>
+                <div class="setting-row">
+                    <span class="setting-label">Database</span>
+                    <span class="setting-value">@ViewBag.DbName</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hangfire Jobs -->
+    <div class="col-lg-6">
+        <div class="settings-card card">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i class="bi bi-clock-history text-info"></i> Hangfire Recurring Jobs
+            </div>
+            <div class="card-body p-0">
+                @if (jobs.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-log mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Job</th>
+                                    <th>Schedule</th>
+                                    <th>Last Run</th>
+                                    <th>Next Run</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var job in jobs)
+                                {
+                                    <tr>
+                                        <td>@job.Id</td>
+                                        <td><code>@job.Cron</code></td>
+                                        <td>@(job.LastExecution?.ToLocalTime().ToString("g") ?? "Never")</td>
+                                        <td>@(job.NextExecution?.ToLocalTime().ToString("g") ?? "N/A")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="p-3 text-muted">No recurring jobs registered.</div>
+                }
+            </div>
+        </div>
+    </div>
+</div>

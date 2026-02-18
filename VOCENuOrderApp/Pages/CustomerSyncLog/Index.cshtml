@@ -4,37 +4,53 @@
     ViewData["Title"] = "Customer Sync Logs";
 }
 
-<h1>Customer Sync Logs</h1>
+<h1 class="page-heading">Customer Sync Logs</h1>
+<p class="page-subheading">View customer synchronization records between Xoro and NuOrder.</p>
 
-<form method="get">
-    <input type="text" name="client" value="@Model.FilterClient" placeholder="Client (e.g., VOCE)" />
-    <input type="text" name="code" value="@Model.FilterCode" placeholder="Customer Code" />
-    <input type="text" name="status" value="@Model.FilterStatus" placeholder="Status (Success/Failed)" />
-    <button type="submit">Filter</button>
-</form>
+<div class="card log-card mb-4">
+    <form method="get" class="filter-bar">
+        <label>
+            Client
+            <input type="text" name="client" value="@Model.FilterClient" class="form-control" placeholder="e.g. VOCE" />
+        </label>
+        <label>
+            Customer Code
+            <input type="text" name="code" value="@Model.FilterCode" class="form-control" placeholder="Code" />
+        </label>
+        <label>
+            Status
+            <input type="text" name="status" value="@Model.FilterStatus" class="form-control" placeholder="Success/Failed" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+    </form>
 
-<table class="table">
-    <thead>
-        <tr>
-            <th>Timestamp (UTC)</th>
-            <th>Client</th>
-            <th>Customer Code</th>
-            <th>Customer Name</th>
-            <th>Status</th>
-            <th>Message</th>
-        </tr>
-    </thead>
-    <tbody>
-@foreach (var log in Model.Logs)
-{
-        <tr>
-            <td>@log.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</td>
-            <td>@log.Client</td>
-            <td>@log.CustomerCode</td>
-            <td>@log.CustomerName</td>
-            <td>@log.SyncStatus</td>
-            <td>@log.Message</td>
-        </tr>
-}
-    </tbody>
-</table>
+    <div class="table-responsive">
+        <table class="table table-log table-hover">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Client</th>
+                    <th>Customer Code</th>
+                    <th>Customer Name</th>
+                    <th>Status</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var log in Model.Logs)
+                {
+                    <tr>
+                        <td>@log.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                        <td>@log.Client</td>
+                        <td>@log.CustomerCode</td>
+                        <td>@log.CustomerName</td>
+                        <td>
+                            <span class="badge @(log.SyncStatus == "Success" ? "bg-success" : "bg-danger")">@log.SyncStatus</span>
+                        </td>
+                        <td>@log.Message</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

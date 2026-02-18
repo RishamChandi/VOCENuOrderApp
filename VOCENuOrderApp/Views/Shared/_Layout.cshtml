@@ -1,3 +1,9 @@
+@{
+    var path = Context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty;
+    bool IsActive(string target) => path.Equals(target, StringComparison.OrdinalIgnoreCase)
+        || (target != "/" && path.StartsWith(target, StringComparison.OrdinalIgnoreCase));
+    string NavClass(string target) => IsActive(target) ? "sidebar-link active" : "sidebar-link";
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,64 +11,155 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - VOCE NuOrder Connector</title>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/VOCENuOrderApp.styles.css" asp-append-version="true" />
 </head>
 <body>
-    <header>
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
-            <div class="container-fluid">
-                <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">VOCE NuOrder</a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
-                        aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
-                    <ul class="navbar-nav flex-grow-1">
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index">Home</a>
+    <!-- Mobile top bar -->
+    <header class="topbar d-lg-none">
+        <button id="sidebarToggleMobile" class="btn btn-link text-white p-0" aria-label="Toggle sidebar">
+            <i class="bi bi-list fs-4"></i>
+        </button>
+        <span class="topbar-brand">VOCE NuOrder</span>
+        <partial name="_LoginPartial" />
+    </header>
+
+    <!-- Sidebar overlay for mobile -->
+    <div id="sidebarOverlay" class="sidebar-overlay d-lg-none"></div>
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+            <a href="/" class="sidebar-brand">
+                <i class="bi bi-arrow-repeat brand-icon"></i>
+                <span class="sidebar-brand-text">VOCE NuOrder</span>
+            </a>
+            <button id="sidebarToggle" class="btn btn-link text-white p-0 d-none d-lg-inline-block" aria-label="Toggle sidebar">
+                <i class="bi bi-chevron-bar-left" id="collapseIcon"></i>
+            </button>
+        </div>
+
+        <nav class="sidebar-nav">
+            <ul class="sidebar-menu">
+                <!-- Dashboard -->
+                <li class="sidebar-item">
+                    <a href="/" class="@NavClass("/")">
+                        <i class="bi bi-speedometer2"></i>
+                        <span class="link-text">Dashboard</span>
+                    </a>
+                </li>
+
+                <!-- Sync Operations Group -->
+                <li class="sidebar-item has-submenu">
+                    <a href="#syncOpsMenu" class="sidebar-link" data-bs-toggle="collapse"
+                       aria-expanded="@(IsActive("/voce/products") || IsActive("/voce/replenishment") || IsActive("/voce/salesorders") ? "true" : "false")">
+                        <i class="bi bi-arrow-repeat"></i>
+                        <span class="link-text">Sync Operations</span>
+                        <i class="bi bi-chevron-down submenu-arrow"></i>
+                    </a>
+                    <ul id="syncOpsMenu" class="sidebar-submenu collapse @(IsActive("/voce/products") || IsActive("/voce/replenishment") || IsActive("/voce/salesorders") ? "show" : "")">
+                        <li>
+                            <a href="/Voce/Products" class="@NavClass("/voce/products")">
+                                <i class="bi bi-box-seam"></i>
+                                <span class="link-text">Product Sync</span>
+                            </a>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-page="/Voce/Products">Product Syncs</a>
+                        <li>
+                            <a href="/Voce/Replenishment" class="@NavClass("/voce/replenishment")">
+                                <i class="bi bi-boxes"></i>
+                                <span class="link-text">Replenishment Sync</span>
+                            </a>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-page="/Voce/Replenishment">Replenishment Syncs</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-page="/Voce/SalesOrders">Sales Orders</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-page="/Voce/Main">Sync Logs</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-controller="OrderStatusSyncLog" asp-action="Index">Sales Order Status Logs</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-controller="ProductSyncLog" asp-action="Index">Product Sync Logs</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-controller="ReplenishmentSyncLog" asp-action="Index">Replenishment Sync Logs</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" href="/CustomerSyncLog">Customer Sync Logs</a>
+                        <li>
+                            <a href="/Voce/SalesOrders" class="@NavClass("/voce/salesorders")">
+                                <i class="bi bi-cart-check"></i>
+                                <span class="link-text">Sales Order Sync</span>
+                            </a>
                         </li>
                     </ul>
-                    <partial name="_LoginPartial" />
-                </div>
-            </div>
+                </li>
+
+                <!-- Sync Logs Group -->
+                <li class="sidebar-item has-submenu">
+                    <a href="#syncLogsMenu" class="sidebar-link" data-bs-toggle="collapse"
+                       aria-expanded="@(IsActive("/productsynclog") || IsActive("/replenishmentsynclog") || IsActive("/orderstatussynclog") || IsActive("/customersynclog") || IsActive("/voce/main") ? "true" : "false")">
+                        <i class="bi bi-journal-text"></i>
+                        <span class="link-text">Sync Logs</span>
+                        <i class="bi bi-chevron-down submenu-arrow"></i>
+                    </a>
+                    <ul id="syncLogsMenu" class="sidebar-submenu collapse @(IsActive("/productsynclog") || IsActive("/replenishmentsynclog") || IsActive("/orderstatussynclog") || IsActive("/customersynclog") || IsActive("/voce/main") ? "show" : "")">
+                        <li>
+                            <a href="/ProductSyncLog" class="@NavClass("/productsynclog")">
+                                <i class="bi bi-file-earmark-text"></i>
+                                <span class="link-text">Product Sync Logs</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/ReplenishmentSyncLog" class="@NavClass("/replenishmentsynclog")">
+                                <i class="bi bi-file-earmark-text"></i>
+                                <span class="link-text">Replenishment Logs</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/OrderStatusSyncLog" class="@NavClass("/orderstatussynclog")">
+                                <i class="bi bi-file-earmark-text"></i>
+                                <span class="link-text">Order Status Logs</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/CustomerSyncLog" class="@NavClass("/customersynclog")">
+                                <i class="bi bi-file-earmark-text"></i>
+                                <span class="link-text">Customer Sync Logs</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/Voce/Main" class="@NavClass("/voce/main")">
+                                <i class="bi bi-file-earmark-text"></i>
+                                <span class="link-text">VOCE Logs</span>
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+
+                <!-- Hangfire -->
+                <li class="sidebar-item">
+                    <a href="/hangfire" target="_blank" class="sidebar-link">
+                        <i class="bi bi-gear-wide-connected"></i>
+                        <span class="link-text">Hangfire</span>
+                        <i class="bi bi-box-arrow-up-right ms-auto external-icon"></i>
+                    </a>
+                </li>
+
+                <!-- Settings -->
+                <li class="sidebar-item">
+                    <a href="/Settings" class="@NavClass("/settings")">
+                        <i class="bi bi-sliders"></i>
+                        <span class="link-text">Settings</span>
+                    </a>
+                </li>
+            </ul>
         </nav>
-    </header>
-    <div class="container">
-        <main role="main" class="pb-3">
+
+        <!-- Sidebar footer with auth -->
+        <div class="sidebar-footer d-none d-lg-block">
+            <partial name="_LoginPartial" />
+        </div>
+    </aside>
+
+    <!-- Main content -->
+    <div id="mainContent" class="main-content">
+        <main role="main" class="p-4">
             @RenderBody()
         </main>
+
+        <footer class="main-footer text-muted">
+            <div class="px-4">
+                &copy; @DateTime.Now.Year - DATA DIVER - <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
+            </div>
+        </footer>
     </div>
 
-    <footer class="border-top footer text-muted">
-        <div class="container">
-            &copy; 2024 - DATA DIVER - <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
-        </div>
-    </footer>
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>

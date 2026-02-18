@@ -1,5 +1,5 @@
-﻿using Hangfire;
-using Microsoft.Data.SqlClient;
+using Hangfire;
+
 using VOCENuOrderApp.Models.NUORDER;
 using VOCENuOrderApp.Models.XORO;
 using VOCENuOrderApp.Data;

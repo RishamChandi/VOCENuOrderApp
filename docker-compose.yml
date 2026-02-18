@@ -1,0 +1,19 @@
+# Local dev: only needed if you don't have PostgreSQL installed natively.
+# If using native PostgreSQL (port 5432), this file is optional.
+# Run: docker compose up -d
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: voce-postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: voce
+      POSTGRES_PASSWORD: voce_dev_2024
+      POSTGRES_DB: voce_nuorder
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

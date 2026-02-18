@@ -1,0 +1,23 @@
+[Unit]
+Description=VOCE NuOrder Connector
+After=network.target postgresql.service
+
+[Service]
+WorkingDirectory=/var/www/vocenuorder
+ExecStart=/usr/bin/dotnet /var/www/vocenuorder/VOCENuOrderApp.dll
+Restart=always
+RestartSec=10
+SyslogIdentifier=vocenuorder
+User=www-data
+
+# Environment — set your production secrets here
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=ASPNETCORE_URLS=http://localhost:5000
+Environment=ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=voce_nuorder;Username=voce;Password=CHANGE_ME
+Environment=NuOrderVOCEProduction__ConsumerKey=CHANGE_ME
+Environment=NuOrderVOCEProduction__ConsumerSecret=CHANGE_ME
+Environment=NuOrderVOCEProduction__Token=CHANGE_ME
+Environment=NuOrderVOCEProduction__TokenSecret=CHANGE_ME
+
+[Install]
+WantedBy=multi-user.target

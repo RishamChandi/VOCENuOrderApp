@@ -4,19 +4,12 @@
     ViewData["Title"] = "VOCE Product Syncs";
 }
 
-<section class="mb-4">
-    <div class="d-flex flex-column flex-lg-row justify-content-lg-between gap-3 align-items-lg-center">
-        <div>
-            <h1 class="h3 mb-1">VOCE Product Syncs</h1>
-            <p class="text-muted mb-0">Monitor NuORDER ?? Xoro product data flow specific to the VOCE tenant.</p>
-        </div>
-        @await Html.PartialAsync("Voce/_VoceNav")
-    </div>
-</section>
+<h1 class="page-heading">VOCE Product Syncs</h1>
+<p class="page-subheading">Monitor NuOrder &harr; Xoro product data flow specific to the VOCE tenant.</p>
 
-<div class="card shadow-sm">
+<div class="card log-card">
     <div class="card-body">
         <h2 class="h5">Coming soon</h2>
-        <p class="mb-0">Dedicated dashboards for VOCE product pushes will live here. They will surface the Hangfire schedules, NuORDER payloads, and last-sync timestamps so the merchandising team can validate catalog freshness without sifting through other clients.</p>
+        <p class="mb-0">Dedicated dashboards for VOCE product pushes will live here. They will surface the Hangfire schedules, NuOrder payloads, and last-sync timestamps so the merchandising team can validate catalog freshness without sifting through other clients.</p>
     </div>
 </div>

@@ -1,8 +1,146 @@
 @{
-    ViewData["Title"] = "Home";
+    ViewData["Title"] = "Dashboard";
+    int prodTotal = ViewBag.ProductTotal;
+    int prodSuccess = ViewBag.ProductSuccess;
+    int prodFailed = ViewBag.ProductFailed;
+
+    int repTotal = ViewBag.ReplenTotal;
+    int repSuccess = ViewBag.ReplenSuccess;
+    int repFailed = ViewBag.ReplenFailed;
+
+    int ordTotal = ViewBag.OrderTotal;
+    int ordSuccess = ViewBag.OrderSuccess;
+    int ordFailed = ViewBag.OrderFailed;
+
+    int custTotal = ViewBag.CustomerTotal;
 }
 
-<div class="text-center">
-    <h1 class="display-4">VOCE NuOrder Connector</h1>
-    <p>Synchronizing products, replenishment, and sales orders between Xoro and NuOrder for VOCE.</p>
+<h1 class="page-heading">Dashboard</h1>
+<p class="page-subheading">Today's sync activity across all integrations.</p>
+
+<div class="row g-4 mb-4">
+    <!-- Product Syncs -->
+    <div class="col-sm-6 col-xl-3">
+        <a href="/ProductSyncLog" class="dash-card card">
+            <div class="card-body">
+                <div class="d-flex align-items-start justify-content-between mb-3">
+                    <div class="dash-icon" style="background: #dbeafe; color: #2563eb;">
+                        <i class="bi bi-box-seam"></i>
+                    </div>
+                    <span class="dash-count">@prodTotal</span>
+                </div>
+                <div class="dash-label">Product Syncs</div>
+                <div class="mt-2 d-flex gap-3" style="font-size: 0.8rem;">
+                    <span class="text-success"><i class="bi bi-check-circle-fill"></i> @prodSuccess</span>
+                    <span class="text-danger"><i class="bi bi-x-circle-fill"></i> @prodFailed</span>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <!-- Replenishment Syncs -->
+    <div class="col-sm-6 col-xl-3">
+        <a href="/ReplenishmentSyncLog" class="dash-card card">
+            <div class="card-body">
+                <div class="d-flex align-items-start justify-content-between mb-3">
+                    <div class="dash-icon" style="background: #dcfce7; color: #16a34a;">
+                        <i class="bi bi-boxes"></i>
+                    </div>
+                    <span class="dash-count">@repTotal</span>
+                </div>
+                <div class="dash-label">Replenishment Syncs</div>
+                <div class="mt-2 d-flex gap-3" style="font-size: 0.8rem;">
+                    <span class="text-success"><i class="bi bi-check-circle-fill"></i> @repSuccess</span>
+                    <span class="text-danger"><i class="bi bi-x-circle-fill"></i> @repFailed</span>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <!-- Sales Order Syncs -->
+    <div class="col-sm-6 col-xl-3">
+        <a href="/OrderStatusSyncLog" class="dash-card card">
+            <div class="card-body">
+                <div class="d-flex align-items-start justify-content-between mb-3">
+                    <div class="dash-icon" style="background: #fef3c7; color: #d97706;">
+                        <i class="bi bi-cart-check"></i>
+                    </div>
+                    <span class="dash-count">@ordTotal</span>
+                </div>
+                <div class="dash-label">Sales Order Syncs</div>
+                <div class="mt-2 d-flex gap-3" style="font-size: 0.8rem;">
+                    <span class="text-success"><i class="bi bi-check-circle-fill"></i> @ordSuccess</span>
+                    <span class="text-danger"><i class="bi bi-x-circle-fill"></i> @ordFailed</span>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <!-- Customer Syncs -->
+    <div class="col-sm-6 col-xl-3">
+        <a href="/CustomerSyncLog" class="dash-card card">
+            <div class="card-body">
+                <div class="d-flex align-items-start justify-content-between mb-3">
+                    <div class="dash-icon" style="background: #ede9fe; color: #7c3aed;">
+                        <i class="bi bi-people"></i>
+                    </div>
+                    <span class="dash-count">@custTotal</span>
+                </div>
+                <div class="dash-label">Customer Syncs</div>
+                <div class="mt-2" style="font-size: 0.8rem;">
+                    <span class="text-muted">Today's total</span>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<!-- Quick links -->
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card log-card">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i class="bi bi-arrow-repeat"></i> <h5>Sync Operations</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    <a href="/Voce/Products" class="list-group-item list-group-item-action d-flex align-items-center gap-2">
+                        <i class="bi bi-box-seam text-primary"></i> Product Sync
+                        <i class="bi bi-chevron-right ms-auto text-muted"></i>
+                    </a>
+                    <a href="/Voce/Replenishment" class="list-group-item list-group-item-action d-flex align-items-center gap-2">
+                        <i class="bi bi-boxes text-success"></i> Replenishment Sync
+                        <i class="bi bi-chevron-right ms-auto text-muted"></i>
+                    </a>
+                    <a href="/Voce/SalesOrders" class="list-group-item list-group-item-action d-flex align-items-center gap-2">
+                        <i class="bi bi-cart-check text-warning"></i> Sales Order Sync
+                        <i class="bi bi-chevron-right ms-auto text-muted"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card log-card">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i class="bi bi-lightning-charge"></i> <h5>Quick Access</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    <a href="/hangfire" target="_blank" class="list-group-item list-group-item-action d-flex align-items-center gap-2">
+                        <i class="bi bi-gear-wide-connected text-info"></i> Hangfire Dashboard
+                        <i class="bi bi-box-arrow-up-right ms-auto text-muted"></i>
+                    </a>
+                    <a href="/Settings" class="list-group-item list-group-item-action d-flex align-items-center gap-2">
+                        <i class="bi bi-sliders text-secondary"></i> Settings
+                        <i class="bi bi-chevron-right ms-auto text-muted"></i>
+                    </a>
+                    <a href="/Voce/Main" class="list-group-item list-group-item-action d-flex align-items-center gap-2">
+                        <i class="bi bi-journal-text text-primary"></i> VOCE Sync Logs
+                        <i class="bi bi-chevron-right ms-auto text-muted"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>

@@ -1,51 +1,72 @@
 using Hangfire;
-using Hangfire.SqlServer;
+using Hangfire.PostgreSql;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using VOCENuOrderApp;
 using VOCENuOrderApp.Data;
 using VOCENuOrderApp.Models.NUORDER;
 using VOCENuOrderApp.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+// Database — PostgreSQL
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(connectionString, o => o.CommandTimeout(600)));
+    options.UseNpgsql(connectionString, o => o.CommandTimeout(600)));
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
-builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.RequireConfirmedAccount = true)
+// Identity — no email confirmation required (internal tool)
+builder.Services.AddDefaultIdentity<IdentityUser>(options =>
+    {
+        options.SignIn.RequireConfirmedAccount = false;
+        options.Password.RequireDigit = true;
+        options.Password.RequiredLength = 6;
+        options.Password.RequireNonAlphanumeric = false;
+        options.Password.RequireUppercase = false;
+    })
     .AddEntityFrameworkStores<ApplicationDbContext>();
-builder.Services.AddControllersWithViews();
-builder.Services.AddRazorPages();
+
+// Redirect to login when not authenticated
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.LoginPath = "/Identity/Account/Login";
+    options.AccessDeniedPath = "/Identity/Account/AccessDenied";
+});
+
+builder.Services.AddControllersWithViews(options =>
+{
+    var policy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+    options.Filters.Add(new Microsoft.AspNetCore.Mvc.Authorization.AuthorizeFilter(policy));
+});
+builder.Services.AddRazorPages(options =>
+{
+    options.Conventions.AuthorizeFolder("/");
+    options.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/Login");
+    options.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/Register");
+    options.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/Logout");
+    options.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/ForgotPassword");
+});
 
 // VOCE service registrations
 builder.Services.AddHttpClient<XoroApiServiceVOCE>();
 builder.Services.AddHttpClient<NuOrderApiServiceVOCE>();
 builder.Services.AddTransient<VOCE_NuOrderReplenishmentSync>();
 
-// VOCE NuOrder config
+// VOCE NuOrder config (reads from env vars in production via Configuration)
 builder.Services.Configure<NuOrderVOCEConfig>(builder.Configuration.GetSection("NuOrderVOCEProduction"));
 
-// Add Hangfire Services
+// Hangfire — PostgreSQL storage
 builder.Services.AddHangfire(config => config
-.UseSimpleAssemblyNameTypeSerializer()
-.UseRecommendedSerializerSettings()
-.UseSqlServerStorage(builder.Configuration.GetConnectionString("DefaultConnection"), new SqlServerStorageOptions
-{
-    CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
-    SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
-    QueuePollInterval = TimeSpan.FromSeconds(30),
-    JobExpirationCheckInterval = TimeSpan.FromHours(1),
-    CountersAggregateInterval = TimeSpan.FromMinutes(1),
-    PrepareSchemaIfNecessary = true,
-    DashboardJobListLimit = 25000,
-    TransactionTimeout = TimeSpan.FromMinutes(1),
-    UseRecommendedIsolationLevel = true,
-    DisableGlobalLocks = true
-}));
+    .UseSimpleAssemblyNameTypeSerializer()
+    .UseRecommendedSerializerSettings()
+    .UsePostgreSqlStorage(opts => opts.UseNpgsqlConnection(connectionString)));
 
-// Add Hangfire Server with tuned concurrency & timeouts to avoid SQL timeouts
 builder.Services.AddHangfireServer(options =>
 {
     options.WorkerCount = Math.Max(1, Environment.ProcessorCount / 2);
@@ -54,9 +75,47 @@ builder.Services.AddHangfireServer(options =>
     options.HeartbeatInterval = TimeSpan.FromSeconds(30);
 });
 
+// Health checks
+builder.Services.AddHealthChecks()
+    .AddNpgSql(connectionString, name: "postgresql")
+    .AddHangfire(opts => { opts.MinimumAvailableServers = 1; }, name: "hangfire");
+
+// Forwarded headers (required behind reverse proxy)
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Auto-migrate database on startup
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    db.Database.Migrate();
+
+    // Seed admin user
+    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+    var adminEmail = app.Configuration["AdminUser:Email"] ?? "admin@voce.local";
+    var adminPassword = app.Configuration["AdminUser:Password"] ?? "Admin123!";
+
+    if (await userManager.FindByEmailAsync(adminEmail) is null)
+    {
+        var admin = new IdentityUser
+        {
+            UserName = adminEmail,
+            Email = adminEmail,
+            EmailConfirmed = true
+        };
+        await userManager.CreateAsync(admin, adminPassword);
+    }
+}
+
+// Forwarded headers must be first in the pipeline
+app.UseForwardedHeaders();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseMigrationsEndPoint();
@@ -67,20 +126,23 @@ else
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
 app.UseStaticFiles();
-
 app.UseRouting();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
 app.MapRazorPages();
+app.MapHealthChecks("/health").AllowAnonymous();
 
-// Adding Hangfire App
-app.UseHangfireDashboard();
+// Hangfire dashboard — requires auth
+app.UseHangfireDashboard("/hangfire", new DashboardOptions
+{
+    Authorization = new[] { new HangfireAuthorizationFilter() }
+});
 app.MapHangfireDashboard();
 
 // VOCE Hangfire Recurring Jobs
@@ -88,33 +150,32 @@ app.MapHangfireDashboard();
 RecurringJob.AddOrUpdate<VOCE_NuOrderProductSync>(
     "VOCE NuOrder Product",
     x => x.VOCE_GetXoroProductList(),
-    "*/10 * * * *"     //Every 10 mins
+    "*/10 * * * *"
 );
 
 RecurringJob.AddOrUpdate<VOCE_NuOrderReplenishmentSync>(
     "VOCE NuOrder Replens ONE",
     x => x.VOCE_NuOrder_Replen_CSVLIST("S0284L"),
-    "0 3 * * *"     //Every day at 3 am.
+    "0 3 * * *"
 );
 
 RecurringJob.AddOrUpdate<VOCE_NuOrderProductSync>(
     "VOCE NuOrder Product ONE",
     x => x.VOCE_GetXoroProductList_CSVLIST("S0302L|S0304L|S0306L|S0313L|S0313M|S0314G|S0314L|S0315G|S0315L|S0321L|S0323L|S0357G|S0357L|S0381L|S0388G|S0388L|S0388M|S0389G|S0389L|S0390L|S0394L|S0427L|S0470L|S0473G|S0473L|S0495G|S0495L|S0497G|S0497L|S0538L|S0538M|S0619L|S0639SL|S0659L|S0850L|S0860M|S0926L|S1160LTHM5|S1160LTHM|S1160LTMF|SF3710G|SF3710L|T0988L|U12007|W11003|W11004|Z30018|Z3357"),
-    "0 4 * * *"     //Every day at 4 am.
+    "0 4 * * *"
 );
-
 
 RecurringJob.AddOrUpdate<VOCE_NuOrderReplenishmentSync>(
     "VOCE NuOrder Replens",
     x => x.VOCE_NuOrder_Replen_CSVLIST("SL4140TU|SL4037TU|SL4023TU|SL3206TU|SL3110TU|SL3063TU|SL3016TU|SL1532TU|SL1126TU|SL1037TU|SL9183SS|SL9178SS|SL9177SX|SL9176SX|SL9175SX|SL9186SH|SL9174SH|SL9173SH|SL1130LM|SL1109LM|SL1091LM|SL9550HO|SL9185HO|SL9184HO|SL3050ECO|SL1105ECO|SL4044DX|SL4043DX|SL3087DX|SL3085DX|SL1124DX|SL1123DX|SL1121DX|SL1115DX|SL4036CT|SL4029CT|CR90011|SL4028CT|CR10005|SL3436CT|SL3206CT|CP80007|SL3079CT|SL3060CT|SL1106CT|CL70009|SL1092CT|CL70008|SL1084CT|SL1064CT|SL9171CT|CL50011|SL9170CT|CL50010|SL9169CT|SL9026CT|CL40011|SL9014CT|CL40009|SL4140CI|SL4037CI|CL20009|SL4035CI|SL4012CI|CL20007|SL3110CI|CZ3357|SL3078CI|SL3073CI|AT1795LU|SL3063CI|AT1763SO|SL3050CI|AT1720SO|SL1107CI|AT4808MQ|SL1089CI|AT3774MQ|SL1081CI|AT3772MQ|SL1070CI|SL9181CI|AT3721MQ|SL9180CI|AT3711MQ|SL9140CI|AT1763MQ|SL9026CI|SL9014CI|AT1720MQ|SL4036CE|AT5715LU|SL4035CE|AT4705LU|SL4010CE|SL3088CE|AT3774LU|SL3082CE|AT3772LU|SL3079CE|AT3721LU|SL1106CE|SL1092CE|AT3711LU|SL1083CE|AT3142LU|SL9168CE|AT1763LU|SL4040BR|SL4039BR|AT1723LU|SL4036BR|AT1720LU|SL3315BR|AT3774AT|M30009L|SL3206BR|AT3721AT|SL3110BR|M30008L|SL3086BR|AT3711AT|M30007L|SL3063BR|AT1720AT|M20009LM|SL1205BR|SL1105BR|K26100-07|SL1089BR|M20008C|SL1081BR|S0313MT|M20007C|SL9140BU|S0313LT|L70007|SL9026BU|K26304-07|SL9012BU|Z30025|L50009|SL9550AY|Z30024|SL9165AY|L50008|SL9164AY|L50007|Z30023|CZ30026|L40008|Z30022|CR90012|L40005|TWL70007|SL3206VE|L20006|TWL50007|SL4494VE|R90010|SL4039VE|CZ30029|R90009|SL4028VE|CZ30028|SL3436VE|R10004|CZ30027|P80006|SL9166DS|SL9163DS|K26403-07|MS10004C|SL9140DS|SL9139DS|K26102-07|MS10003|SL9162BT|SL3206SB|K26103-07|M90006C|SL4015SB|K25103-11|M90005C|K26501-11|SL4010SB|SL3436SB|K26305-11|M90004L|SL4036SB|K26102-08|K26101-08|M90003L|SL4016SB|K26303-08|M80006C|SL4010SP|K26301-08|K26500-08|M80005L|M80004C|K26400-03|M80003L|SL1064SV|SL9159PL|SL1037SV|SL3210SV|SL9026PL|SL3206SV|M70006CB|SL9153PL|SL3110SV|SL9157JS|SL4494SV|SL4039SV|M70006C|SL3206VO|SL4028SV|SL4036VO|SL3073SV|M70005LMB|SL3072SV|SL3002SV|SL4028VO|M70005LM|SL1109LR|SL3436VO|M50009C|SL1105LR|SL1092LR|SL4015VO|M50008C|SL1084LR|SL4029VO|M50007C|SL4029LR|SL9150SS|M50006LM|SL4028LR|SL9148SS|SL4015LR|M50005LM|SL3071LR|M50004LM|SL3060LR|SL9151SS|SL3050LR|M40005C|SL4039ECO|SL1532VE|SL4036ECO|M40004LM|SL1518VE|SL1107VE|SL1105VE|SL9157VY|M40003LM|SL9156VY|SL3110VE|SL3033VE|M30014C|SL4140PL|SL1064SB|SL4037PL|SL2976SB|M30013C|SL1106SB|SL4036PL|SL1083SB|M30012C|SL1092SB|SL3436PL|M30011C|SL3110SB|SL3069SB|SL4029PL|M30010L|SL3016SB|SL3070SP|SL1106VO|SL1084VO|SL1054VO|SL1092VO|SL3110VO|BARE040RV|SL3050VO|BARE039RV|SL3060VO|BARE037RV|SL1078ECO|BARE036RV|BARE035FL|SL3077ECO|BARE034FL|BARE033FL|SL1081PL|BARE030RV|SL1205PL|BARE028FL|SL1084PL|BARE027FL|SL1518PL|BARE026RV|BARE025RV|BARE024RV|SL3027PL|BARE023RV|BARE022RV|SL3073PL|Z5219|Z5209|SL3110PL|Z5205|SL3060PL|Z3357|Z30018|Z30017|W11004|W11003|U12007|T0985L|T0985G|T0984L|T0984G|T0982L|T0982G|T0981L|T0981G|SL4140KE|SL9548L|SL4140JB|SL4140IS|SL9543SP|SL4140IC|SL9488P|SL9302DC|SL9155SE|SL4140ECO|SL9154SE|SL9153SE|SL4140DS|SL9153IB|SL4140DO|SL9152WT|SL9152TX|SL4140CK|SL9149SH|SL4140CC|SL9147NP|SL4140BW|SL9146TL|SL4140AH|SL9145SN|SL4105CN|SL9145MA|SL4099P|SL9144RD|SL9144MA|SL4099ECO|SL9143RS|SL9140WT|SL4092WF|SL9140TX|SL4092DC|SL9140TL|SL4075ECO|SL4050CH|SL9140SN|SL4031BN|SL9140SH|SL4029TX|SL9140SE|SL4029SZ|SL9140JB|SL9140BT|SL4029NT|SL9140BC|SL4028TO|SL9139TL|SL4028RP|SL9139SN|SL4028JA|SL9139SH|SL9138TL|SL4028ECO|SL9137BL|SL4026EC|SL4023RI|SL9136KT|SL4023JB|SL4023JA|SL9135PH|SL4023IC|SL9132SS|SL4023ECO|SL9130TL|SL9130SH|SL4023CS|SL9130PH|SL4023BW|SL9129SD|SL4023BA|SL9129PH|SL9128SD|SL4016TO|SL9127IS|SL4016RP|SL9127CK|SL4016ME|SL9119P|SL4016DE|SL9119LO|SL4015WF|SL9118P|SL4015VS|SL9012TW|SL9113KT|SL4015TX|SL9012SS|SL4015TW|SL9099TW|SL4015TO|SL9099RI|SL4015SZ|SL9012AM|SL4015SU|SL9011TW|SL4015SD|SL9011SS|SL4015RP|SL9010SM|SL4015RI|SL9009SM|SL4015P|SL4015PO|SL9008SM|SL4015PH|SL9008CY|SL4015NV|SL4015NT|SL9007SM|SL4015MT|SL9006SM|SL4015ME|SL4015LU|SL9005VS|SL9005PC|SL4015LO|SL9005DA|SL4015KE|SL9005CO|SL4015JU|SL9005CC|SL4015JB|SL9005BA|SL4015IS|SL9005AH|SL4015IL|SL4015IF|SL4015IC|SL4015FA|SL4015ECO|SL1009WF|SL1009PC|SL1009LO|SL1008VS|SL1008TW|SL1007IF|SL1008SC|SL1007FA|SL1008IF|SL1005SD|SL1008HC|SL1005IF|SL1008DC|SL1003DC|SL1008AM|SL1002IL|S0390L|SL1002DC|SL1001VS|SL1001PH|SL1001PC|SL1001NV|SL1001AH|SL1001ECO|SL1002IL|SL1002DC|SL1003DC|SL1005IF|SL1008HC|SL1005IF|SL1008DC|SL1003DC|SL1008AM|SL1002IL|S0390L|SL1002DC|SL1001VS|SL1001PH|SL1001PC|SL1001NV|SL1001AH|SL1001ECO|SL1002IL|SL1002DC|SL1003DC|SL1005IF|SL1008HC|SL1005IF|SL1008DC|SL1003DC|SL1008AM|SL1002IL|S0390L|SL1002DC|SL1001VS|SL1001PH|SL1001PC|SL1001NV|SL1001AH|SL1001ECO|SL1002IL|SL1002DC|SL1003DC|SL1005IF|SL1008HC|SL1005IF|SL1008DC|SL1003DC|SL1016BN|SL1017DE|SL1017LE|SL1017RP|SL1018TW|SL1019DE|SL1021AH|SL1021BA|SL1021BL|SL1021BW|SL1021CK|SL1021ECO|SL1021LO|SL1021MA|SL1021ME|SL1021RD|SL1021RI|SL1022AM|SL1022TW|SL1024DF|SL1032ECO|SL1034DF|SL1035DF|SL1036DF|SL1037ECO|SL1037IC|SL1037JB|SL1037LU|SL1037MA|SL1037SU|SL1037SV|SL1037TU|SL1037TX|SL1039BW|SL1039ECO|SL1039IC|SL1039LU|SL1039RD|SL1039RI|SL1040BL|SL1040CP|SL1040ECO|SL1040IL|SL1052BN|SL1052SU|SL1053BA|SL1053CS|SL1053NT|SL1054BA|SL1054CS|SL1054NT|SL1054SE|SL1054VO|SL1055RF|SL1055SP|SL1056CR|SL1056SE|SL1056TO|SL1057CR|SL1058CR|SL1059BN|SL1063DE|SL1064CT|SL1064DE|SL1064SB|SL1064SV|SL1064TO|SL1065AH|SL1066RD|SL1067EC|SL1068EC|SL1069SC|SL1070CI|SL1070ECO|SL1070JA|SL1071RI|SL1072EC|SL1074TO|SL1075ECO|SL1077CC|SL1077DO|SL1077SD|SL1078ECO|SL1078IC|SL1078RF|SL1078TX|SL1081BR|SL1081CI|SL1081LU|SL1081PL|SL1081SZ|SL1083CE|SL1083CR|SL1083LE|SL1083RF|SL1083RP|SL1083SB|SL1083SE|SL1084CT|SL1084LR|SL1084NT|SL1084PL|SL1084TX|SL1084VO|SL1085CR|SL1086CR|SL1088CR|SL1089BR|SL1089CI|SL1089JA|SL1091BN|SL1091LM|SL1092CE|SL1092CT|SL1092LR|SL1092SB|SL1092SZ|SL1092TO|SL1092VO|SL1096JB|SL1097JB|SL1105BR|SL1105ECO|SL1105LR|SL1105VE|SL1106CE|SL1106CT|SL1106SB|SL1106VO|SL1107CI|SL1107LE|SL1107VE|SL1109LM|SL1109LR|SL1112ECO|SL1112LO|SL1112SE|SL1112WF|SL1115DX|SL1121DX|SL1123DX|SL1124DX|SL1125RF|SL1126TU|SL1128BL|SL1128DC|SL1128ECO|SL1128MA|SL1128PH|SL1128VS|SL1130LM|SL1132LM|SL1194ECO|SL1194P|SL1205BR|SL1205BW|SL1205CC|SL1205CK|SL1205DO|SL1205ECO|SL1205JA|SL1205JB"),
-    "0 3 * * *"     //Every day at 3 am.
+    "0 3 * * *"
 );
 
 RecurringJob.AddOrUpdate<VOCE_NuOrderSalesOrder>(
     "VOCE NuOrder SalesOrder Sync",
     svc => svc.FetchApprovedOrdersAsync(),
-    "*/30 * * * *" // every 30 minutes
+    "*/30 * * * *"
 );
 
-// Run the app
 app.Run();
+
